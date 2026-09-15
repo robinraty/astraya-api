@@ -1,120 +1,402 @@
-// Importe Express.
-//
-// Express est un framework web pour Node.js.
-// Un framework fournit une structure et des outils déjà prêts
-// pour construire une application plus facilement.
-//
-// En très simple :
-// - Node.js permet d'exécuter JavaScript côté serveur
-// - Express aide à créer le serveur et les routes de l'API
+// --------------------------------------------------
+// IMPORTS
+// --------------------------------------------------
+
+// Express est le framework backend utilisé
+// pour créer le serveur et les routes de l'API.
 const express = require("express");
 
-// Importe CORS.
-// CORS permet à notre frontend React, qui tourne sur un autre port,
-// de communiquer avec l'API Express.
+// CORS permet au frontend React
+// de communiquer avec notre backend Express.
 const cors = require("cors");
 
-// Importe Mongoose.
-//
-// Mongoose est une librairie qui facilite la communication avec MongoDB.
-// Elle permet notamment de définir des schemas et de manipuler les données.
+// Mongoose permet de communiquer avec MongoDB.
 const mongoose = require("mongoose");
 
-// Importe le modèle Creation.
+// bcrypt permet de hasher et vérifier
+// les mots de passe.
+const bcrypt = require("bcryptjs");
+
+// jsonwebtoken permet de créer
+// et vérifier les JWT.
+const jwt = require("jsonwebtoken");
+
+// Charge les variables du fichier .env.
 //
-// Ce modèle représente une création Astraya dans la base de données.
-// On l'utilisera pour créer, lire, modifier ou supprimer des créations.
+// Cela permet notamment d'utiliser JWT_SECRET
+// sans écrire le secret directement dans le code.
+require("dotenv").config();
+
+// Modèles MongoDB.
 const Creation = require("./models/Creation");
+const User = require("./models/User");
+
+// --------------------------------------------------
+// CONFIGURATION
+// --------------------------------------------------
 
 // Crée l'application Express.
-//
-// "app" représente notre serveur backend.
-// On va utiliser cet objet pour créer les différentes routes de l'API.
 const app = express();
 
-// Port utilisé par le serveur.
+// Port utilisé par l'API.
 const port = 3000;
 
-// Adresse de notre base MongoDB locale.
-//
-// 127.0.0.1 signifie que MongoDB tourne sur notre propre ordinateur.
-// "astraya" est le nom de la base de données.
-const mongoUrl = "mongodb://127.0.0.1:27017/astraya";
+// Base MongoDB locale Astraya.
+const mongoUrl =
+  "mongodb://127.0.0.1:27017/astraya";
 
-
-// Autorise le frontend React à envoyer des requêtes à l'API.
+// Autorise le frontend à communiquer avec l'API.
 app.use(cors());
 
-
-// Permet à Express de lire les données JSON reçues.
-//
-// Plus tard, React enverra par exemple un objet contenant
-// le nom d'une création et son audioConfig.
+// Permet à Express de lire le JSON reçu.
 app.use(express.json());
 
-// Connexion à MongoDB avec Mongoose.
+// Connexion à MongoDB.
 mongoose
   .connect(mongoUrl)
   .then(() => {
     console.log("Connected to MongoDB");
   })
   .catch((error) => {
-    console.error("MongoDB connection error:", error);
+    console.error(
+      "MongoDB connection error:",
+      error
+    );
   });
 
-// Route de test.
+// --------------------------------------------------
+// MIDDLEWARE D'AUTHENTIFICATION
+// --------------------------------------------------
 //
-// GET signifie qu'on demande simplement une information au serveur.
+// Un middleware est une fonction qui s'exécute
+// entre la requête et la route finale.
+//
+// Ici, son rôle est de vérifier le JWT.
+//
+// Si le token est valide :
+// → la requête continue.
+//
+// S'il est absent ou invalide :
+// → la requête est refusée.
+const authenticateUser = (
+  request,
+  response,
+  next
+) => {
+  // Le frontend enverra le token dans un header :
+  //
+  // Authorization: Bearer LE_TOKEN
+  const authHeader =
+    request.headers.authorization;
+
+  // Vérifie que le header existe
+  // et commence bien par "Bearer ".
+  if (
+    !authHeader ||
+    !authHeader.startsWith("Bearer ")
+  ) {
+    return response.status(401).json({
+      message: "Authentication required.",
+    });
+  }
+
+  // Enlève "Bearer " pour garder uniquement
+  // le JWT.
+  const token = authHeader.split(" ")[1];
+
+  try {
+    // Vérifie :
+    // - que la signature est correcte
+    // - que le token n'est pas expiré
+    //
+    // Si le token a été modifié,
+    // jwt.verify déclenche une erreur.
+    const decodedToken = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
+
+    // Lors du login, on avait placé userId
+    // dans le token.
+    //
+    // On récupère maintenant cet id
+    // et on l'ajoute à la requête.
+    request.userId = decodedToken.userId;
+
+    // next() signifie :
+    //
+    // "Tout est correct,
+    // continue vers la route demandée."
+    next();
+  } catch (error) {
+    return response.status(401).json({
+      message:
+        "Invalid or expired authentication token.",
+    });
+  }
+};
+
+// --------------------------------------------------
+// ROUTE DE TEST
+// --------------------------------------------------
+
 app.get("/", (request, response) => {
   response.send("Astraya API is running");
 });
 
-// Route permettant de récupérer toutes les créations.
-//
-// GET /creations demande à MongoDB de renvoyer
-// tous les documents présents dans la collection "creations".
-app.get("/creations", async (request, response) => {
-  try {
-    // Cherche toutes les créations enregistrées dans MongoDB.
-    const creations = await Creation.find();
+// --------------------------------------------------
+// REGISTER
+// --------------------------------------------------
 
-    // Renvoie les créations au format JSON.
-    response.json(creations);
+app.post("/register", async (request, response) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+    } = request.body;
+
+    // Tous les champs sont obligatoires.
+    if (!name || !email || !password) {
+      return response.status(400).json({
+        message:
+          "Name, email and password are required.",
+      });
+    }
+
+    // Uniformise l'email.
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    // Vérifie si l'email existe déjà.
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existingUser) {
+      return response.status(409).json({
+        message:
+          "An account already exists with this email.",
+      });
+    }
+
+    // Mot de passe minimum 8 caractères.
+    if (password.length < 8) {
+      return response.status(400).json({
+        message:
+          "Password must contain at least 8 characters.",
+      });
+    }
+
+    // Génère un salt bcrypt.
+    const salt = await bcrypt.genSalt(12);
+
+    // Transforme le mot de passe en hash.
+    const hashedPassword = await bcrypt.hash(
+      password,
+      salt
+    );
+
+    // Crée l'utilisateur.
+    const user = new User({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+    });
+
+    // Sauvegarde dans MongoDB.
+    const savedUser = await user.save();
+
+    // Ne renvoie jamais le mot de passe.
+    response.status(201).json({
+      message: "Account created successfully.",
+      user: {
+        id: savedUser._id,
+        name: savedUser.name,
+        email: savedUser.email,
+        createdAt: savedUser.createdAt,
+      },
+    });
   } catch (error) {
-    // Si la lecture échoue, renvoie une erreur.
+    console.error("Register error:", error);
+
     response.status(500).json({
-      message: "Impossible de récupérer les créations",
-      error: error.message,
+      message:
+        "Unable to create the account.",
     });
   }
 });
 
-// Route permettant de créer une nouvelle création Astraya.
-//
-// POST est utilisé quand on veut envoyer de nouvelles données au serveur.
-app.post("/creations", async (request, response) => {
+// --------------------------------------------------
+// LOGIN
+// --------------------------------------------------
+
+app.post("/login", async (request, response) => {
   try {
-    // Récupère les données JSON envoyées au serveur.
-    const creationData = request.body;
+    const {
+      email,
+      password,
+    } = request.body;
 
-    // Crée un nouvel objet Creation avec les données reçues.
-    const creation = new Creation(creationData);
+    // Email + mot de passe obligatoires.
+    if (!email || !password) {
+      return response.status(400).json({
+        message:
+          "Email and password are required.",
+      });
+    }
 
-    // Sauvegarde réellement la création dans MongoDB.
-    const savedCreation = await creation.save();
+    const normalizedEmail =
+      email.trim().toLowerCase();
 
-    // Renvoie au frontend la création sauvegardée.
-    response.status(201).json(savedCreation);
+    // Cherche l'utilisateur.
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    // Message volontairement générique.
+    //
+    // On ne révèle pas si l'email existe.
+    if (!user) {
+      return response.status(401).json({
+        message:
+          "Invalid email or password.",
+      });
+    }
+
+    // Compare le mot de passe reçu
+    // avec le hash MongoDB.
+    const isPasswordValid =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!isPasswordValid) {
+      return response.status(401).json({
+        message:
+          "Invalid email or password.",
+      });
+    }
+
+    // Génère un JWT signé
+    // avec notre secret privé.
+    const token = jwt.sign(
+      {
+        userId: user._id,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "2h",
+      }
+    );
+
+    // Renvoie le JWT au frontend.
+    response.json({
+      message: "Login successful.",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
   } catch (error) {
-    // Si quelque chose se passe mal, renvoie une erreur.
-    response.status(400).json({
-      message: "Impossible de sauvegarder la création",
-      error: error.message,
+    console.error("Login error:", error);
+
+    response.status(500).json({
+      message: "Unable to log in.",
     });
   }
 });
 
-// Démarre le serveur Express sur le port 3000.
+// --------------------------------------------------
+// GET /CREATIONS
+// ROUTE PROTEGEE
+// --------------------------------------------------
+//
+// authenticateUser s'exécute AVANT la route.
+//
+// Donc cette route est impossible à utiliser
+// sans JWT valide.
+app.get(
+  "/creations",
+  authenticateUser,
+  async (request, response) => {
+    try {
+      // request.userId vient du JWT.
+      //
+      // On demande uniquement les créations
+      // appartenant à cet utilisateur.
+      const creations = await Creation.find({
+        userId: request.userId,
+      });
+
+      response.json(creations);
+    } catch (error) {
+      console.error(
+        "Get creations error:",
+        error
+      );
+
+      response.status(500).json({
+        message:
+          "Unable to retrieve creations.",
+      });
+    }
+  }
+);
+
+// --------------------------------------------------
+// POST /CREATIONS
+// ROUTE PROTEGEE
+// --------------------------------------------------
+
+app.post(
+  "/creations",
+  authenticateUser,
+  async (request, response) => {
+    try {
+      // On ne prend PAS le userId envoyé
+      // éventuellement par le frontend.
+      //
+      // Ce serait dangereux car quelqu'un pourrait
+      // mettre l'id d'un autre utilisateur.
+      //
+      // Le vrai userId vient uniquement du JWT validé.
+      const creation = new Creation({
+        userId: request.userId,
+        name: request.body.name,
+        audioConfig: request.body.audioConfig,
+      });
+
+      // Sauvegarde la création.
+      const savedCreation =
+        await creation.save();
+
+      response
+        .status(201)
+        .json(savedCreation);
+    } catch (error) {
+      console.error(
+        "Save creation error:",
+        error
+      );
+
+      response.status(400).json({
+        message:
+          "Unable to save the creation.",
+      });
+    }
+  }
+);
+
+// --------------------------------------------------
+// DEMARRAGE DU SERVEUR
+// --------------------------------------------------
+
 app.listen(port, () => {
-  console.log(`Astraya API running on http://localhost:${port}`);
+  console.log(
+    `Astraya API running on http://localhost:${port}`
+  );
 });

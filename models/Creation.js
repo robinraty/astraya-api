@@ -1,59 +1,63 @@
 // Importe Mongoose.
-// Mongoose est une librairie qui simplifie la communication entre Node/Express et MongoDB.
-// Elle permet notamment de définir la structure des données avec des schemas.
+//
+// Mongoose facilite la communication entre
+// notre backend Node/Express et MongoDB.
 const mongoose = require("mongoose");
 
-// Ce schema décrit la forme que doit avoir une création Astraya.
-// On peut le voir comme le "modèle de données" d'une création utilisateur.
-//
-// Quand on voudra sauvegarder une création dans MongoDB,
-// Mongoose vérifiera qu'elle respecte cette structure.
+// Ce schema décrit la structure
+// d'une création Astraya sauvegardée.
 const creationSchema = new mongoose.Schema(
   {
-    // Nom donné par l'utilisateur à sa création.
-    // Exemple : "My Forest", "Deep Sleep", etc.
-    name: {
-      // Le nom doit être du texte.
-      type: String,
-
-      // Le nom est obligatoire pour pouvoir sauvegarder la création.
+    // Identifiant de l'utilisateur propriétaire
+    // de cette création.
+    //
+    // ObjectId est le type d'identifiant
+    // utilisé automatiquement par MongoDB.
+    //
+    // ref: "User" indique que cet identifiant
+    // correspond à un document du modèle User.
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
     },
 
-    // Contient toute la configuration sonore de la création.
-    // Cette structure correspond directement à l'audioConfig
-    // déjà utilisé dans le frontend Astraya.
+    // Nom choisi par l'utilisateur.
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    // Configuration audio de la création.
     audioConfig: {
-      // Variante de pitch sélectionnée.
-      // Exemple : "dark", "natural" ou "bright".
+      // Pitch du mix :
+      // dark, natural ou bright.
       pitch: {
         type: String,
         required: true,
       },
 
-      // Type d'atmosphère sélectionné.
-      // Exemple : "airy" ou "deep".
+      // Atmosphère :
+      // airy ou deep.
       atmosphere: {
         type: String,
         required: true,
       },
 
-      // Indique si l'atmosphère est activée ou non.
-      // true = activée
-      // false = désactivée
+      // Indique si le pad Atmosphere est actif.
       atmosphereEnabled: {
         type: Boolean,
         required: true,
       },
 
-      // Indique si le thème musical est activé ou non.
+      // Indique si le Musical Theme est actif.
       musicalThemeEnabled: {
         type: Boolean,
         required: true,
       },
 
-      // Contient les volumes des différents sons de nature.
-      // Chaque valeur sera un nombre, par exemple entre 0 et 100.
+      // Volumes des sons de nature.
       natureVolumes: {
         rain: {
           type: Number,
@@ -82,25 +86,25 @@ const creationSchema = new mongoose.Schema(
       },
     },
   },
-
   {
-    // Demande à Mongoose d'ajouter automatiquement deux dates :
-    // createdAt = date de création
-    // updatedAt = date de dernière modification
+    // Ajoute automatiquement :
+    // createdAt
+    // updatedAt
     timestamps: true,
   }
 );
 
 // Transforme le schema en modèle utilisable.
 //
-// Creation sera l'objet qu'on utilisera plus tard pour :
-// - créer une nouvelle création
-// - récupérer les créations
-// - modifier une création
+// Creation permettra notamment de :
+// - sauvegarder une création
+// - chercher les créations d'un utilisateur
 // - supprimer une création
-//
-// MongoDB créera automatiquement une collection appelée "creations".
-const Creation = mongoose.model("Creation", creationSchema);
+// - modifier une création
+const Creation = mongoose.model(
+  "Creation",
+  creationSchema
+);
 
-// Rend le modèle Creation disponible dans les autres fichiers du backend.
+// Rend le modèle disponible ailleurs.
 module.exports = Creation;
