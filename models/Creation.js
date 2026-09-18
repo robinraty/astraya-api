@@ -4,18 +4,33 @@
 // notre backend Node/Express et MongoDB.
 const mongoose = require("mongoose");
 
+// --------------------------------------------------
+// IMAGES AUTORISEES
+// --------------------------------------------------
+//
+// Une création peut uniquement utiliser
+// l'un des 20 backgrounds prévus par Astraya.
+//
+// Cela évite d'enregistrer n'importe quelle
+// chaîne de caractères comme image.
+const allowedImages = Array.from(
+  { length: 20 },
+  (_, index) =>
+    `images/ambiant-images/astraya-background-${index + 1}.png`
+);
+
+// --------------------------------------------------
+// SCHEMA CREATION
+// --------------------------------------------------
+//
 // Ce schema décrit la structure
 // d'une création Astraya sauvegardée.
 const creationSchema = new mongoose.Schema(
   {
-    // Identifiant de l'utilisateur propriétaire
-    // de cette création.
+    // Identifiant de l'utilisateur propriétaire.
     //
     // ObjectId est le type d'identifiant
     // utilisé automatiquement par MongoDB.
-    //
-    // ref: "User" indique que cet identifiant
-    // correspond à un document du modèle User.
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -29,9 +44,30 @@ const creationSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Artwork choisi par l'utilisateur.
+    //
+    // On sauvegarde uniquement le chemin relatif.
+    //
+    // Exemple :
+    // images/ambiant-images/astraya-background-5.png
+    image: {
+      type: String,
+
+      // Seules nos 20 images officielles
+      // sont autorisées.
+      enum: allowedImages,
+
+      // Les nouvelles créations utilisent
+      // background-3 si aucune image n'est reçue.
+      default:
+        "images/ambiant-images/astraya-background-3.png",
+
+      required: true,
+    },
+
     // Configuration audio de la création.
     audioConfig: {
-      // Pitch du mix :
+      // Pitch :
       // dark, natural ou bright.
       pitch: {
         type: String,
@@ -45,13 +81,13 @@ const creationSchema = new mongoose.Schema(
         required: true,
       },
 
-      // Indique si le pad Atmosphere est actif.
+      // Pad Atmosphere actif ou non.
       atmosphereEnabled: {
         type: Boolean,
         required: true,
       },
 
-      // Indique si le Musical Theme est actif.
+      // Musical Theme actif ou non.
       musicalThemeEnabled: {
         type: Boolean,
         required: true,
@@ -95,12 +131,6 @@ const creationSchema = new mongoose.Schema(
 );
 
 // Transforme le schema en modèle utilisable.
-//
-// Creation permettra notamment de :
-// - sauvegarder une création
-// - chercher les créations d'un utilisateur
-// - supprimer une création
-// - modifier une création
 const Creation = mongoose.model(
   "Creation",
   creationSchema
