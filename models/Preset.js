@@ -17,7 +17,7 @@ const mongoose = require("mongoose");
 
 const presetSchema = new mongoose.Schema(
   {
-    // Identifiant lisible utilisé côté frontend.
+    // Slug = Identifiant lisible utilisé côté frontend.
     //
     // Exemple :
     // airy-birds

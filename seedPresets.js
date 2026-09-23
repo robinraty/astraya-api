@@ -2,6 +2,8 @@
 // IMPORTS
 // --------------------------------------------------
 
+// Ce fichier sert à remplir MongoDB avec mes 3 presets officiels.
+
 const mongoose = require("mongoose");
 
 const Preset = require("./models/Preset");
